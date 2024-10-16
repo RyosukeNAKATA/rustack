@@ -1,7 +1,24 @@
+use std::collections::HashMap;
+
+struct Vm<'src> {
+    stack: Vec<Value<'src>>,
+    vars: HashMap<&'src str, Value<'src>>,
+}
+
+impl<'src> Vm<'src> {
+    fn new() -> Self {
+        Self {
+            stack: vec![],
+            vars: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Value<'src> {
     Num(i32),
     Op(&'src str),
+    Sym(&'src str),
     Block(Vec<Value<'src>>),
 }
 
@@ -28,7 +45,7 @@ fn main() {
 }
 
 fn parse<'a>(line: &'a str) -> Vec<Value> {
-    let mut stack = vec![];
+    let mut vm = Vm::new();
     let input: Vec<_> = line.split(" ").collect();
     let mut words = &input[..];
 
@@ -39,34 +56,43 @@ fn parse<'a>(line: &'a str) -> Vec<Value> {
         if word == "{" {
             let value;
             (value, rest) = parse_block(rest);
-            stack.push(value);
+            vm.stack.push(value);
         } else {
             let code = if let Ok(num) = word.parse::<i32>() {
                 Value::Num(num)
+            } else if word.starts_with("/") {
+                Value::Sym(&word[1..])
             } else {
                 Value::Op(word)
             };
-            eval(code, &mut stack);
+            eval(code, &mut vm);
         }
         words = rest;
     }
 
-    println!("stack: {stack:?}");
-
-    stack
+    println!("vm: {vm:?}");
+    vm
 }
 
-fn eval<'src>(code: Value<'src>, stack: &mut Vec<Value<'src>>) {
+fn eval<'src>(code: Value<'src>, vm: &mut Vm<Value<'src>>) {
     match code {
         Value::Op(op) => match op {
-            "+" => add(stack),
-            "-" => sub(stack),
-            "*" => mul(stack),
-            "/" => div(stack),
-            "if" => op_if(stack),
-            _ => panic!("{op:?} could not be parsed"),
+            "+" => add(&mut vm.stack),
+            "-" => sub(&mut vm.stack),
+            "*" => mul(&mut vm.stack),
+            "/" => div(&mut vm.stack),
+            "<" => lt(&mut vm.stack),
+            "if" => op_if(vm),
+            "def" => op_def(vm),
+            _ => {
+                let val = vm
+                    .vars
+                    .get(op)
+                    .expect(&format!("{op:?} is not a defined operaton"));
+                vm.stack.push((val.clone()));
+            }
         },
-        _ => stack.push(code.clone()),
+        _ => vm.stack.push(code.clone()),
     }
 }
 
@@ -138,6 +164,16 @@ fn op_if(stack: &mut Vec<Value>) {
         for code in false_branch {
             eval(code, stack);
         }
+    }
+}
+
+macro_rules! impl_op {
+    {$name:ident, $op:tt} => {
+                                 fn $name(stack: &mut Vec<value<){
+                                     let rhs = stack.pop().unwrap().as_num();
+                                     let lhs = stack.pop().unwrap().as_num();
+                                     stack.push(Value::Num((lhs $op rhs) as i32));
+                                 }
     }
 }
 
