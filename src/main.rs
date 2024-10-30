@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Value<'src> {
+enum Value {
     Num(i32),
-    Op(&'src str),
-    Sym(&'src str),
-    Block(Vec<Value<'src>>),
+    Op(String),
+    Sym(String),
+    Block(Vec<Value>),
+    Native(NativeOp),
 }
 
-impl<'src> Value<'src> {
+impl Value {
     fn as_num(&self) -> i32 {
         match self {
             Self::Num(val) => *val,
@@ -16,18 +17,27 @@ impl<'src> Value<'src> {
         }
     }
 
-    fn to_block(self) -> Vec<Value<'src>> {
+    fn to_block(self) -> Vec<Value> {
         match self {
             Self::Block(val) => val,
             _ => panic!("Value is not a block"),
         }
     }
 
-    fn as_sym(&self) -> &'src str {
+    fn as_sym(&self) -> &str {
         if let Self::Sym(sym) = self {
-            *sym
+            sym
         } else {
             panic!("Value is not a symbol");
+        }
+    }
+
+    fn to_string(&self) -> String {
+        match self {
+            Self::Num(i) => i.to_string(),
+            Self::Op(ref s) | Self::Sym(ref s) => s.clone(),
+            Self::Block(_) => "<Block>".to_string(),
+            _ => panic!("Value is not a string"),
         }
     }
 }
@@ -47,13 +57,13 @@ impl<'src> Vm<'src> {
 }
 
 fn main() {
+    let mut vm = Vm::new();
     for line in std::io::stdin().lines().flatten() {
-        parse(&line);
+        parse(&line, &mut vm);
     }
 }
 
-fn parse<'a>(line: &'a str) -> Vec<Value> {
-    let mut vm = Vm::new();
+fn parse<'vm, 'src>(line: &'src str, vm: &'vm Vm<'src>) -> &'vm [Value<'src>] {
     let input: Vec<_> = line.split(" ").collect();
     let mut words = &input[..];
 
@@ -80,7 +90,7 @@ fn parse<'a>(line: &'a str) -> Vec<Value> {
 
     println!("stack: {:?}", vm.stack);
 
-    vm.stack
+    &vm.stack
 }
 
 fn eval<'src>(code: Value<'src>, vm: &mut Vm<'src>) {
