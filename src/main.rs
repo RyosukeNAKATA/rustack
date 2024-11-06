@@ -37,7 +37,6 @@ impl Value {
             Self::Num(i) => i.to_string(),
             Self::Op(ref s) | Self::Sym(ref s) => s.clone(),
             Self::Block(_) => "<Block>".to_string(),
-            _ => panic!("Value is not a string"),
         }
     }
 }
@@ -57,10 +56,12 @@ impl<'src> Vm<'src> {
 }
 
 fn main() {
-    let mut vm = Vm::new();
-    for line in std::io::stdin().lines().flatten() {
-        parse(&line, &mut vm);
-    }
+    if let Some(f) = std::env::args().nth(1).and_then(|f| std::fs::File::open(f).ok()) 
+    {
+      parse_batch(BufReader::bew(f));
+    }else{
+        parse_interactive();
+      }
 }
 
 fn parse<'vm, 'src>(line: &'src str, vm: &'vm Vm<'src>) -> &'vm [Value<'src>] {
@@ -103,6 +104,7 @@ fn eval<'src>(code: Value<'src>, vm: &mut Vm<'src>) {
             "<" => lt(&mut vm.stack),
             "if" => op_if(vm),
             "def" => op_def(vm),
+            "puts" => puts(vm)
             _ => {
                 let val = vm
                     .vars
@@ -185,6 +187,32 @@ fn op_def(vm: &mut Vm) {
     let sym = vm.stack.pop().unwrap().as_sym();
 
     vm.vars.insert(sym, value);
+}
+
+fn puts(vm: &mut Vm) {
+    let value = vm.stack.pop().unwrap();
+    println!("{}", value.to_string());
+}
+
+fn parse_block(source: impl BufRead) -> Vec<Value>{
+    let mut vm = Vm::new();
+    for line in source.lines().flatten(){
+        for word in line.split(" ") {
+            parse_word(word, &mut vm);
+        }
+    }
+    vm.stack
+}
+
+fn parse_interactive(){
+    let mut vm = Vm::new();
+    for line in std::io::new().linew().flatten(){
+        for word in line.split(" "){
+            parse_word(word, &mut vm);
+        }
+        println!("stack: {:?}");
+    }
+    
 }
 
 #[cfg(test)]
