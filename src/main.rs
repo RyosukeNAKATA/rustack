@@ -41,9 +41,11 @@ impl Value {
     }
 }
 
-struct Vm<'src> {
-    stack: Vec<Value<'src>>,
-    vars: HashMap<&'src str, Value<'src>>,
+struct Vm {
+    stack: Vec<Value>,
+    vars: HashMap<String, Value>,
+    blocks: Vec<Vec<Value>>,
+
 }
 
 impl<'src> Vm<'src> {
@@ -58,7 +60,7 @@ impl<'src> Vm<'src> {
 fn main() {
     if let Some(f) = std::env::args().nth(1).and_then(|f| std::fs::File::open(f).ok()) 
     {
-      parse_batch(BufReader::bew(f));
+      parse_batch(BufReader::new(f));
     }else{
         parse_interactive();
       }
@@ -94,7 +96,11 @@ fn parse<'vm, 'src>(line: &'src str, vm: &'vm Vm<'src>) -> &'vm [Value<'src>] {
     &vm.stack
 }
 
-fn eval<'src>(code: Value<'src>, vm: &mut Vm<'src>) {
+fn eval(code: Value, vm: &mut Vm) {
+    if let Some(top_block) = vm.blocks.last_mut(){
+        top_block.push(code);
+        return;
+    }
     match code {
         Value::Op(op) => match op {
             "+" => add(&mut vm.stack),
@@ -194,7 +200,7 @@ fn puts(vm: &mut Vm) {
     println!("{}", value.to_string());
 }
 
-fn parse_block(source: impl BufRead) -> Vec<Value>{
+fn parse_batch(source: impl BufRead) -> Vec<Value>{
     let mut vm = Vm::new();
     for line in source.lines().flatten(){
         for word in line.split(" ") {
@@ -206,13 +212,34 @@ fn parse_block(source: impl BufRead) -> Vec<Value>{
 
 fn parse_interactive(){
     let mut vm = Vm::new();
-    for line in std::io::new().linew().flatten(){
+    for line in std::io::stdin().linew().flatten(){
         for word in line.split(" "){
             parse_word(word, &mut vm);
         }
-        println!("stack: {:?}");
+        println!("stack: {:?}", vm.stack);
     }
-    
+}
+
+fn parse_word(word : &str, vm: &mut Vm) {
+  if word.is_empty() {
+    return;
+  }
+  if word == "{" {
+    vm.blocks.push(vec![]);
+  } else if word == "}" {
+    let top_block =
+      vm.blocks.pop().expect("Block stack underrun!");
+    eval(Value::Block(top_block), vm);
+  } else {
+    let code = if let Ok(num) = word.parse::<i32>() {
+      Value::Num(num)
+    } else if word.starts_with("/") {
+      Value::Sym(word[1..].to_string())
+    } else {
+      Value::Op(word.to_string())
+    };
+    eval(code, vm);
+  }
 }
 
 #[cfg(test)]
